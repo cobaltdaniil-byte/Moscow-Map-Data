@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simplify projected OSM geometry and export per-chunk Roblox ModuleScripts."""
+"""Simplify projected OSM geometry and export small Roblox ModuleScripts."""
 from __future__ import annotations
 import json, math
 from pathlib import Path
@@ -9,7 +9,8 @@ SRC = ROOT / "data/projected.geojson"
 OUT = ROOT / "roblox/ModuleScripts"
 CFG = json.loads((ROOT / "config/los_angeles.json").read_text(encoding="utf-8"))
 CHUNK = int(CFG["chunk_size_studs"])
-TOLERANCE = 1.5  # studs; one global map scale remains unchanged
+TOLERANCE = 1.5  # studs; keep one global map scale
+MAX_MODULE_BYTES = 96 * 1024  # safely below common Studio source-size limits
 
 def rdp(points, eps):
     if len(points) <= 2:
@@ -57,6 +58,13 @@ def points(c):
         for item in c:
             yield from points(item)
 
+def make_source(ix, iz, part, features):
+    payload = json.dumps(
+        {"x": ix, "z": iz, "part": part, "features": features},
+        separators=(",", ":"), ensure_ascii=False
+    )
+    return "return [=[\n" + payload + "\n]=]\n"
+
 def main():
     if not SRC.exists():
         raise SystemExit("Missing data/projected.geojson. Run fetch_osm.py and build_geojson.py first.")
@@ -70,26 +78,52 @@ def main():
             continue
         minx=min(p[0] for p in coords); maxx=max(p[0] for p in coords)
         minz=min(p[1] for p in coords); maxz=max(p[1] for p in coords)
-        # Assign by center for now; chunks are loaded/unloaded as a unit in Roblox.
         cx=(minx+maxx)/2; cz=(minz+maxz)/2
         key=(math.floor(cx/CHUNK), math.floor(cz/CHUNK))
         buckets.setdefault(key, []).append(item)
+
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("CobaltChunk_*.lua"):
         old.unlink()
+
     manifest=[]
     total_bytes=0
+    total_features=0
     for (ix,iz), features in sorted(buckets.items()):
-        name=f"CobaltChunk_{ix}_{iz}"
-        payload=json.dumps({"x":ix,"z":iz,"features":features},separators=(",",":"),ensure_ascii=False)
-        source="return [=[\n"+payload+"\n]=]\n"
-        size=len(source.encode("utf-8")); total_bytes += size
-        (OUT/(name+".lua")).write_text(source,encoding="utf-8")
-        manifest.append({"module":name,"x":ix,"z":iz,"features":len(features),"source_bytes":size})
-    (ROOT/"data/chunk_manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(f"Chunks: {len(manifest)}; features: {sum(x['features'] for x in manifest)}; total Lua size: {total_bytes/1024:.1f} KiB")
-    for item in manifest:
-        print(f"  {item['module']}: {item['features']} features, {item['source_bytes']/1024:.1f} KiB")
+        parts=[]
+        current=[]
+        current_size=0
+        for feature in features:
+            encoded_size=len(json.dumps(feature,separators=(",",":"),ensure_ascii=False).encode("utf-8"))
+            if current and current_size + encoded_size > MAX_MODULE_BYTES - 2048:
+                parts.append(current)
+                current=[]
+                current_size=0
+            current.append(feature)
+            current_size += encoded_size
+        if current:
+            parts.append(current)
+
+        for part_index, part_features in enumerate(parts, start=1):
+            name=f"CobaltChunk_{ix}_{iz}_Part_{part_index:03d}"
+            source=make_source(ix,iz,part_index,part_features)
+            size=len(source.encode("utf-8"))
+            if size > MAX_MODULE_BYTES:
+                raise SystemExit(f"{name} is {size} bytes; one feature exceeds the safe module size.")
+            (OUT/(name+".lua")).write_text(source,encoding="utf-8")
+            total_bytes += size
+            total_features += len(part_features)
+            manifest.append({
+                "module":name,"x":ix,"z":iz,"part":part_index,
+                "features":len(part_features),"source_bytes":size
+            })
+
+    (ROOT/"data/chunk_manifest.json").write_text(
+        json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8"
+    )
+    print(f"Spatial chunks: {len(buckets)}; ModuleScripts: {len(manifest)}")
+    print(f"Features: {total_features}; total Lua size: {total_bytes/1024/1024:.2f} MiB")
+    print(f"Largest ModuleScript: {max(x['source_bytes'] for x in manifest)/1024:.1f} KiB")
     print(f"Output: {OUT}")
 
 if __name__=="__main__":
