@@ -109,6 +109,21 @@ local function main()
     if not data then error("Create ServerStorage/CobaltCityData and add the exported CobaltChunk ModuleScripts.") end
 
     local world = getWorld()
+
+    -- A dedicated invisible spawn places the tester at the Cobalt City origin.
+    if not world:FindFirstChild("CobaltCitySpawn") then
+        local spawn = Instance.new("SpawnLocation")
+        spawn.Name = "CobaltCitySpawn"
+        spawn.Size = Vector3.new(12, 1, 12)
+        spawn.Position = CFG.ORIGIN + Vector3.new(0, 1, 0)
+        spawn.Anchored = true
+        spawn.Transparency = 1
+        spawn.CanCollide = true
+        spawn.Neutral = true
+        spawn.Duration = 0
+        spawn.Parent = world
+    end
+
     local available = {}
     for _, module in ipairs(data:GetChildren()) do
         if module:IsA("ModuleScript") then
