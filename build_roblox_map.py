@@ -87,7 +87,7 @@ for f in data.get("features", []):
 buildings.sort(key=lambda x:x[0])
 buildings = [x[1:] for x in buildings[:MAX_BUILDINGS]]
 # Cap road segments to keep initial Studio test responsive.
-roads = roads[:5500]
+roads = roads[:3500]
 parks = parks[:220]
 waters = waters[:120]
 
