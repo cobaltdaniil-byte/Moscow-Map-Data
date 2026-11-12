@@ -1,7 +1,8 @@
--- COBALT CITY RP — SAFE WORLD GENERATOR
--- Place as ServerScriptService/CobaltCityWorld
--- Owns ONLY Workspace.CobaltCityWorld. Moscow folders are never touched.
+-- COBALT CITY RP — STREAMED, SAFE WORLD LOADER
+-- Put this Script in ServerScriptService as CobaltCityWorld.
+-- It creates/clears ONLY Workspace.CobaltCityWorld. Moscow objects are untouched.
 
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ServerStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
@@ -10,35 +11,32 @@ local CFG = {
     WORLD_NAME = "CobaltCityWorld",
     DATA_FOLDER = "CobaltCityData",
     ORIGIN = Vector3.new(50000, 0, 50000),
-    CLEAR_OWN_WORLD = true,
-    BATCH_SIZE = 100,
+    CHUNK_SIZE = 1024,
+    LOAD_RADIUS = 1, -- 3x3 chunks around each player
+    UPDATE_SECONDS = 4,
+    BATCH_SIZE = 120,
 }
 
-local function createWorld()
+local function getWorld()
     local world = Workspace:FindFirstChild(CFG.WORLD_NAME)
     if world and not world:IsA("Folder") then
-        error("Workspace.CobaltCityWorld exists but is not a Folder. Rename it manually; nothing was deleted.")
+        error("Workspace.CobaltCityWorld exists but is not a Folder. Rename that object manually; nothing was deleted.")
     end
     if not world then
         world = Instance.new("Folder")
         world.Name = CFG.WORLD_NAME
         world.Parent = Workspace
-    elseif CFG.CLEAR_OWN_WORLD then
-        world:ClearAllChildren()
     end
     return world
 end
 
-local function folder(parent, name)
-    local f = Instance.new("Folder")
-    f.Name = name
-    f.Parent = parent
-    return f
-end
-
 local function widthFor(tags)
-    local widths = {motorway=22,trunk=19,primary=16,secondary=13,tertiary=11,
-        residential=9,living_street=7,service=6,unclassified=9,track=5}
+    local widths = {
+        motorway=22, motorway_link=14, trunk=19, trunk_link=13,
+        primary=16, primary_link=12, secondary=13, secondary_link=10,
+        tertiary=11, tertiary_link=9, residential=9,
+        living_street=7, service=6, unclassified=8, track=5
+    }
     local width = widths[tostring(tags.highway or "")] or 8
     local raw = tags.width and tonumber(string.match(tostring(tags.width), "[%d%.]+"))
     if raw then width = math.clamp(raw * 0.5, 4, 28) end
@@ -49,86 +47,155 @@ local function vec(p)
     return Vector3.new(p[1], 0, p[2]) + CFG.ORIGIN
 end
 
-local function addRoad(parent, a, b, width, name)
-    local d = b-a
-    if d.Magnitude < 0.5 then return end
+local function addRoad(parent, a, b, width, index)
+    local delta = b-a
+    if delta.Magnitude < 1 then return end
     local part = Instance.new("Part")
-    part.Name = name
+    part.Name = "Road_" .. index
     part.Anchored = true
+    part.CanTouch = false
     part.Material = Enum.Material.Asphalt
-    part.Color = Color3.fromRGB(48,49,52)
-    part.Size = Vector3.new(width,0.35,d.Magnitude)
-    part.CFrame = CFrame.lookAt((a+b)*0.5,b)
+    part.Color = Color3.fromRGB(48, 49, 52)
+    part.Size = Vector3.new(width, 0.35, delta.Magnitude)
+    part.CFrame = CFrame.lookAt((a+b)*0.5, b)
     part.Parent = parent
 end
 
-local function addBuildingWalls(parent, ring, tags, index)
+local function addBuilding(parent, ring, tags, index)
+    if #ring < 4 then return end
     local height = tonumber(tags.height)
-    if height then height = math.clamp(height*0.5,3,220)
+    if height then
+        height = math.clamp(height * 0.5, 3, 220)
     else
         local levels = tonumber(tags["building:levels"])
-        height = levels and math.clamp(levels*3.2,3,180) or 9
+        height = levels and math.clamp(levels * 3.2, 3, 180) or 9
     end
+    local model = Instance.new("Model")
+    model.Name = "Building_" .. index
+    model.Parent = parent
     for i=1,#ring-1 do
-        local a,b=vec(ring[i]),vec(ring[i+1])
-        local d=b-a
-        if d.Magnitude>0.5 then
-            local wall=Instance.new("Part")
-            wall.Name="Wall_"..index.."_"..i
-            wall.Anchored=true
-            wall.Material=Enum.Material.Concrete
-            wall.Color=Color3.fromRGB(150,151,148)
-            wall.Size=Vector3.new(0.7,height,d.Magnitude)
-            wall.CFrame=CFrame.lookAt((a+b)*0.5+Vector3.new(0,height/2,0),b)
-            wall.Parent=parent
+        local a,b = vec(ring[i]),vec(ring[i+1])
+        local delta = b-a
+        if delta.Magnitude > 1 then
+            local wall = Instance.new("Part")
+            wall.Name = "Wall_" .. i
+            wall.Anchored = true
+            wall.CanTouch = false
+            wall.Material = Enum.Material.Concrete
+            wall.Color = Color3.fromRGB(150,151,148)
+            wall.Size = Vector3.new(0.7,height,delta.Magnitude)
+            wall.CFrame = CFrame.lookAt((a+b)*0.5+Vector3.new(0,height/2,0),b)
+            wall.Parent = model
         end
     end
 end
 
+local function parseChunkName(name)
+    local x,z = string.match(name, "^CobaltChunk_(-?%d+)_(-?%d+)$")
+    if not x then return nil end
+    return tonumber(x), tonumber(z)
+end
+
+local function getCharacterChunk(player)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local localPos = root.Position - CFG.ORIGIN
+    return math.floor(localPos.X/CFG.CHUNK_SIZE), math.floor(localPos.Z/CFG.CHUNK_SIZE)
+end
+
 local function main()
-    local data=ServerStorage:FindFirstChild(CFG.DATA_FOLDER)
-    if not data then error("Create ServerStorage/CobaltCityData and put exported chunk ModuleScripts inside.") end
-    local world=createWorld()
-    local modules=data:GetChildren()
-    table.sort(modules,function(a,b) return a.Name<b.Name end)
-    local processed=0
-    for _,module in ipairs(modules) do
-        if module:IsA("ModuleScript") and string.match(module.Name,"^CobaltChunk_") then
-            local ok,raw=pcall(require,module)
-            if not ok or type(raw)~="string" then
-                warn("Bad chunk module: "..module.Name)
-                continue
-            end
-            local decodedOk,payload=pcall(function() return HttpService:JSONDecode(raw) end)
-            if not decodedOk or type(payload.features)~="table" then
-                warn("Invalid chunk JSON: "..module.Name)
-                continue
-            end
-            local chunk=folder(world,module.Name)
-            local roads=folder(chunk,"Roads")
-            local buildings=folder(chunk,"Buildings")
-            local n=0
-            for _,feature in ipairs(payload.features) do
-                local tags=feature.properties or {}
-                local geom=feature.geometry or {}
-                if geom.type=="LineString" and tags.highway then
-                    local c=geom.coordinates
-                    for i=1,#c-1 do
-                        addRoad(roads,vec(c[i]),vec(c[i+1]),widthFor(tags),"Road_"..n)
-                        n+=1
-                    end
-                elseif geom.type=="Polygon" and tags.building and geom.coordinates[1] then
-                    addBuildingWalls(buildings,geom.coordinates[1],tags,n)
-                    n+=1
-                end
-                processed+=1
-                if processed%CFG.BATCH_SIZE==0 then task.wait() end
-            end
-            print("[CobaltCity] "..module.Name.." loaded")
+    local data = ServerStorage:FindFirstChild(CFG.DATA_FOLDER)
+    if not data then error("Create ServerStorage/CobaltCityData and add the exported CobaltChunk ModuleScripts.") end
+
+    local world = getWorld()
+    local available = {}
+    for _, module in ipairs(data:GetChildren()) do
+        if module:IsA("ModuleScript") then
+            local x,z = parseChunkName(module.Name)
+            if x and z then available[x .. ":" .. z] = {module=module,x=x,z=z} end
         end
     end
-    print("[CobaltCity] Done. Features: "..processed.."; origin: "..tostring(CFG.ORIGIN))
-    print("[CobaltCity] Moscow map folders were not modified.")
+
+    local loaded = {}
+    local busy = false
+
+    local function loadChunk(key, entry)
+        if loaded[key] then return end
+        local ok, raw = pcall(require, entry.module)
+        if not ok or type(raw) ~= "string" then
+            warn("[CobaltCity] Cannot read " .. entry.module.Name)
+            return
+        end
+        local decoded, payload = pcall(function() return HttpService:JSONDecode(raw) end)
+        if not decoded or type(payload.features) ~= "table" then
+            warn("[CobaltCity] Invalid JSON in " .. entry.module.Name)
+            return
+        end
+
+        local chunk = Instance.new("Folder")
+        chunk.Name = entry.module.Name
+        chunk.Parent = world
+        loaded[key] = chunk
+        local roads = Instance.new("Folder"); roads.Name="Roads"; roads.Parent=chunk
+        local buildings = Instance.new("Folder"); buildings.Name="Buildings"; buildings.Parent=chunk
+        local roadIndex, buildingIndex, made = 0, 0, 0
+
+        for _, feature in ipairs(payload.features) do
+            local tags = feature.properties or {}
+            local geom = feature.geometry or {}
+            if geom.type == "LineString" and tags.highway then
+                local coords = geom.coordinates
+                for i=1,#coords-1 do
+                    roadIndex += 1
+                    addRoad(roads, vec(coords[i]), vec(coords[i+1]), widthFor(tags), roadIndex)
+                    made += 1
+                    if made % CFG.BATCH_SIZE == 0 then task.wait() end
+                end
+            elseif geom.type == "Polygon" and tags.building and geom.coordinates[1] then
+                buildingIndex += 1
+                addBuilding(buildings, geom.coordinates[1], tags, buildingIndex)
+                made += #geom.coordinates[1]
+                if made % CFG.BATCH_SIZE < #geom.coordinates[1] then task.wait() end
+            end
+        end
+        print("[CobaltCity] Loaded " .. entry.module.Name)
+    end
+
+    local function updateChunks()
+        if busy then return end
+        busy = true
+        local wanted = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            local cx,cz = getCharacterChunk(player)
+            if cx then
+                for dx=-CFG.LOAD_RADIUS,CFG.LOAD_RADIUS do
+                    for dz=-CFG.LOAD_RADIUS,CFG.LOAD_RADIUS do
+                        local key=(cx+dx) .. ":" .. (cz+dz)
+                        if available[key] then wanted[key]=available[key] end
+                    end
+                end
+            end
+        end
+        for key,entry in pairs(wanted) do
+            loadChunk(key,entry)
+        end
+        for key,folder in pairs(loaded) do
+            if not wanted[key] then
+                folder:Destroy()
+                loaded[key]=nil
+                print("[CobaltCity] Unloaded " .. key)
+            end
+        end
+        busy = false
+    end
+
+    print("[CobaltCity] Ready. Data chunks: " .. tostring(#data:GetChildren()))
+    print("[CobaltCity] World origin: " .. tostring(CFG.ORIGIN) .. ". Moscow map is untouched.")
+    while true do
+        updateChunks()
+        task.wait(CFG.UPDATE_SECONDS)
+    end
 end
 
 main()
