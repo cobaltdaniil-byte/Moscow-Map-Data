@@ -1,5 +1,5 @@
 --========================================================
--- COBALT CITY RP — MOSCOW TEST MAP 0.3
+-- COBALT CITY RP — MOSCOW TEST MAP 0.6
 -- IMPORTANT: This creates MoscowCityMap_Test only.
 -- Your existing CobaltCityMap is NOT deleted or modified.
 --
@@ -394,7 +394,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 print("========================================")
-print("COBALT CITY RP — MOSCOW TEST MAP 0.5")
+print("COBALT CITY RP — MOSCOW TEST MAP 0.6")
 print("Road segments: " .. tostring(#(DATA.Roads or {})))
 print("Buildings in source: " .. tostring(#(DATA.Buildings or {})))
 print("Buildings skipped due to overlap: " .. tostring(skippedOverlapping))
