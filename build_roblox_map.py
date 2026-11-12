@@ -12,7 +12,7 @@ OUT.mkdir(exist_ok=True)
 
 LON0, LAT0 = 37.6173, 55.7558
 COS = math.cos(math.radians(LAT0))
-SCALE = 0.18
+SCALE = 0.35
 RADIUS_M = 4200
 MAX_BUILDINGS = 650
 
@@ -57,7 +57,7 @@ for f in data.get("features", []):
                     length = math.hypot(dx,dz)
                     if length < 5:
                         continue
-                    roads.append((mid[0]*SCALE,mid[1]*SCALE,width_m*SCALE,length*SCALE,math.degrees(math.atan2(-dx,dz))))
+                    roads.append((mid[0]*SCALE,mid[1]*SCALE,width_m*SCALE,length*SCALE,math.degrees(math.atan2(dx,dz))))
         elif g.geom_type in ("Polygon", "MultiPolygon") and (p.get("building") or p.get("leisure") in {"park","garden"} or p.get("landuse") in {"grass","forest","recreation_ground"} or p.get("natural") in {"water","wood"} or p.get("water")):
             geoms = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
             for poly in geoms:
@@ -76,7 +76,7 @@ for f in data.get("features", []):
                     h = p.get("height")
                     try: height = float(str(h).replace("m","").strip())
                     except: height = 12 + (int(p.get("building:levels", 3) or 3))*3
-                    buildings.append((math.hypot(cx,cz), row[0],row[1],row[2],row[3],max(7,min(115,height*SCALE/0.18)))
+                    buildings.append((math.hypot(cx,cz), row[0],row[1],row[2],row[3],max(8,min(90,height*0.7)))
                 elif p.get("natural") == "water" or p.get("water"):
                     waters.append(row)
                 else:
