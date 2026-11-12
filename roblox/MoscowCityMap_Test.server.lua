@@ -1,5 +1,5 @@
 --========================================================
--- COBALT CITY RP — MOSCOW TEST MAP 0.1
+-- COBALT CITY RP — MOSCOW TEST MAP 0.2
 -- IMPORTANT: This creates MoscowCityMap_Test only.
 -- Your existing CobaltCityMap is NOT deleted or modified.
 --
@@ -10,6 +10,7 @@
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local ServerStorage = game:GetService("ServerStorage")
+local Players = game:GetService("Players")
 
 local dataModule = ServerStorage:WaitForChild("MoscowMapData", 30)
 if not dataModule then
@@ -113,7 +114,7 @@ makePart(
 	map,
 	"Moscow Ground",
 	Vector3.new(radius * 2 + 300, 5, radius * 2 + 300),
-	CFrame.new(0, -2.7, 0),
+	CFrame.new(0, -2.5, 0),
 	Enum.Material.Ground,
 	Color3.fromRGB(93, 105, 83),
 	true
@@ -127,8 +128,8 @@ for i, item in ipairs(DATA.Water or {}) do
 	if w and d then
 		makePart(
 			natureFolder, "Moscow Water " .. i,
-			Vector3.new(w, 0.35, d),
-			CFrame.new(x, 0.05, z),
+			Vector3.new(w, 0.12, d),
+			CFrame.new(x, 0.16, z),
 			Enum.Material.Glass,
 			Color3.fromRGB(55, 125, 165),
 			false
@@ -145,8 +146,8 @@ for i, item in ipairs(DATA.Parks or {}) do
 	if w and d then
 		makePart(
 			natureFolder, "Green Area " .. i,
-			Vector3.new(w, 0.45, d),
-			CFrame.new(x, 0.12, z),
+			Vector3.new(w, 0.12, d),
+			CFrame.new(x, 0.08, z),
 			Enum.Material.Grass,
 			Color3.fromRGB(72, 112, 70),
 			true
@@ -163,8 +164,8 @@ for i, item in ipairs(DATA.Roads or {}) do
 	if width and length and length > 1 then
 		makePart(
 			roadsFolder, "Road Segment " .. i,
-			Vector3.new(math.max(2, width), 0.45, math.max(2, length)),
-			CFrame.new(x, 0.23, z) * CFrame.Angles(0, math.rad(angle or 0), 0),
+			Vector3.new(math.max(2, width), 0.22, math.max(2, length)),
+			CFrame.new(x, 0.28, z) * CFrame.Angles(0, math.rad(angle or 0), 0),
 			Enum.Material.Asphalt,
 			Color3.fromRGB(42, 45, 49),
 			true
@@ -208,7 +209,7 @@ for i, item in ipairs(DATA.Buildings or {}) do
 		makePart(
 			model, "Main Facade",
 			Vector3.new(width, height, depth),
-			CFrame.new(x, height / 2 + 0.45, z),
+			CFrame.new(x, height / 2 + 0.15, z),
 			Enum.Material.SmoothPlastic,
 			facade,
 			true
@@ -217,20 +218,12 @@ for i, item in ipairs(DATA.Buildings or {}) do
 		makePart(
 			model, "Roof",
 			Vector3.new(width + 1.2, 1.1, depth + 1.2),
-			CFrame.new(x, height + 1, z),
+			CFrame.new(x, height + 0.75, z),
 			Enum.Material.Concrete,
 			Color3.fromRGB(65, 68, 73),
 			true
 		)
 
-		makePart(
-			model, "Ground Floor",
-			Vector3.new(width + 0.15, math.min(4, height * 0.22), depth + 0.15),
-			CFrame.new(x, 2.45, z),
-			Enum.Material.Brick,
-			facade:Lerp(Color3.fromRGB(75, 73, 70), 0.18),
-			true
-		)
 
 		-- A restrained row of windows on two street-facing sides.
 		local windowCount = math.clamp(math.floor(width / 8), 1, 5)
@@ -264,7 +257,7 @@ for i, item in ipairs(DATA.Buildings or {}) do
 		makePart(
 			model, "Facade Cornice",
 			Vector3.new(width + 1.4, 0.8, depth + 1.4),
-			CFrame.new(x, height - 0.4, z),
+			CFrame.new(x, height - 0.1, z),
 			Enum.Material.Concrete,
 			facade:Lerp(Color3.new(1,1,1), 0.16),
 			false
@@ -275,20 +268,60 @@ for i, item in ipairs(DATA.Buildings or {}) do
 end
 
 ----------------------------------------------------------
--- Central test spawn
+-- Safe test spawn outside the imported OSM geometry.
+-- The player is moved here after map generation.
 ----------------------------------------------------------
+local spawnX = radius + 80
+
+local spawnPlatform = makePart(
+	map,
+	"Moscow Spawn Platform",
+	Vector3.new(48, 1, 48),
+	CFrame.new(spawnX, 0.5, 0),
+	Enum.Material.Concrete,
+	Color3.fromRGB(105, 110, 116),
+	true
+)
+
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "Moscow Test Spawn"
 spawn.Size = Vector3.new(12, 1, 12)
-spawn.Position = Vector3.new(0, 1, 0)
+spawn.Position = Vector3.new(spawnX, 1.5, 0)
 spawn.Anchored = true
 spawn.Neutral = true
+spawn.AllowTeamChangeOnTouch = false
 spawn.Material = Enum.Material.Concrete
 spawn.Color = Color3.fromRGB(65, 115, 155)
 spawn.Parent = map
 
+local function movePlayerToMoscow(player)
+	player.RespawnLocation = spawn
+	local character = player.Character
+	if character then
+		task.defer(function()
+			if character.Parent then
+				character:PivotTo(spawn.CFrame + Vector3.new(0, 4, 0))
+			end
+		end)
+	end
+end
+
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function()
+		task.wait(0.35)
+		movePlayerToMoscow(player)
+	end)
+	if player.Character then
+		movePlayerToMoscow(player)
+	end
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+	movePlayerToMoscow(player)
+end
+
 print("========================================")
-print("COBALT CITY RP — MOSCOW TEST MAP 0.1")
+print("COBALT CITY RP — MOSCOW TEST MAP 0.2")
 print("Road segments: " .. tostring(#(DATA.Roads or {})))
 print("Buildings: " .. tostring(#(DATA.Buildings or {})))
 print("Parks: " .. tostring(#(DATA.Parks or {})))
