@@ -1,0 +1,38 @@
+name: Prepare Moscow map data
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "export*.geojson"
+      - "filter_moscow_geojson.py"
+      - ".github/workflows/prepare-map.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  filter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install geometry tools
+        run: python -m pip install shapely
+
+      - name: Filter and merge GeoJSON
+        run: python filter_moscow_geojson.py
+
+      - name: Upload ready map files
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-moscow-filtered
+          path: filtered/
+          if-no-files-found: error
+          retention-days: 14
