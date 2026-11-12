@@ -204,12 +204,37 @@ local glassColors = {
 }
 local rng = Random.new(240519)
 
+-- Filter heavily overlapping building rectangles before creating parts.
+-- This removes duplicate/stacked footprints from the simplified OSM export.
+local acceptedFootprints = {}
+local skippedOverlapping = 0
+
 for i, item in ipairs(DATA.Buildings or {}) do
 	local x, z, width, depth, height = item[1], item[2], item[3], item[4], item[5]
 	if width and depth and height and not isInsideSpawnZone(x, z, math.max(width, depth) * 0.5) then
 		width = math.max(5, math.min(width, 75))
 		depth = math.max(5, math.min(depth, 75))
 		height = math.max(8, math.min(height, 90))
+
+		local overlapsTooMuch = false
+		local area = width * depth
+		for _, other in ipairs(acceptedFootprints) do
+			local overlapX = math.max(0, math.min(x + width/2, other.x + other.w/2) - math.max(x - width/2, other.x - other.w/2))
+			local overlapZ = math.max(0, math.min(z + depth/2, other.z + other.d/2) - math.max(z - depth/2, other.z - other.d/2))
+			local overlapArea = overlapX * overlapZ
+			local smallerArea = math.min(area, other.area)
+			if smallerArea > 0 and overlapArea / smallerArea > 0.55 then
+				overlapsTooMuch = true
+				break
+			end
+		end
+
+		if overlapsTooMuch then
+			skippedOverlapping += 1
+		else
+			table.insert(acceptedFootprints, {
+				x = x, z = z, w = width, d = depth, area = area
+			})
 
 		local facade = facadeColors[rng:NextInteger(1, #facadeColors)]
 		local glass = glassColors[rng:NextInteger(1, #glassColors)]
@@ -273,6 +298,7 @@ for i, item in ipairs(DATA.Buildings or {}) do
 			facade:Lerp(Color3.new(1,1,1), 0.16),
 			false
 		)
+		end
 	end
 
 	if i % 40 == 0 then task.wait() end
@@ -364,9 +390,11 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 print("========================================")
-print("COBALT CITY RP — MOSCOW TEST MAP 0.4")
+print("COBALT CITY RP — MOSCOW TEST MAP 0.5")
 print("Road segments: " .. tostring(#(DATA.Roads or {})))
-print("Buildings: " .. tostring(#(DATA.Buildings or {})))
+print("Buildings in source: " .. tostring(#(DATA.Buildings or {})))
+print("Buildings skipped due to overlap: " .. tostring(skippedOverlapping))
+print("Buildings created: " .. tostring(#acceptedFootprints))
 print("Parks: " .. tostring(#(DATA.Parks or {})))
 print("Water areas: " .. tostring(#(DATA.Water or {})))
 print("Old CobaltCityMap was preserved.")
