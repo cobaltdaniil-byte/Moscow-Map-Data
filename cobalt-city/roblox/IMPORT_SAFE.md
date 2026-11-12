@@ -1,23 +1,34 @@
 # Cobalt City Roblox import — safe mode
 
-DO NOT delete or move the Moscow map or its scripts. Keep Workspace/CobaltCityMap, Workspace/MoscowCityMap_Test, ServerScriptService/CobaltCityServer and ServerScriptService/MoscowCityGenerator exactly as they are.
+## Important: keep Moscow untouched
 
-The Cobalt City generator creates and owns only Workspace/CobaltCityWorld. Its world origin is X=50000, Z=50000, far away from the Moscow test map. On restart it clears children only inside its own CobaltCityWorld folder.
+Do not delete, move, rename or edit these Moscow objects:
+- `Workspace/CobaltCityMap`
+- `Workspace/MoscowCityMap_Test`
+- `ServerScriptService/CobaltCityServer`
+- `ServerScriptService/MoscowCityGenerator`
 
-## Export
-After fetching and projecting the source data, run:
-```powershell
-py tools/export_roblox_modules.py
-```
+The Cobalt City loader owns only `Workspace/CobaltCityWorld`. Its origin is X=50000, Z=50000. It loads nearby map chunks around players and removes only its own distant chunk folders. It never clears Workspace and never edits Moscow objects.
 
-## Studio import
-1. In ServerStorage create a Folder named CobaltCityData.
-2. For each generated .lua file in roblox/ModuleScripts, create a ModuleScript inside ServerStorage/CobaltCityData. Name it like the file without the .lua extension, then replace its source with the complete file content.
-3. In ServerScriptService create a Script named CobaltCityWorld.
-4. Paste roblox/CobaltCityWorld.server.lua into it.
-5. Press Play. The Cobalt City test world appears around X=50000, Z=50000.
+## Build the pilot data on Windows
 
-If Workspace already contains a non-Folder object named CobaltCityWorld, the script stops safely and does not delete it.
+1. Open the `cobalt-city` folder.
+2. Double-click `build_pilot_map.bat`.
+3. Wait until it says `BUILD COMPLETE`.
+4. If it stops with an error, do not continue; copy the error text.
 
-## First renderer limitations
-This first pass draws road centerline segments and building perimeter walls. Building roofs are intentionally omitted for now to avoid fake bounding-box roofs and unreliable triangulation of concave footprints. Terrain, road junctions, roof triangulation, parks, water, street furniture, interiors and gameplay systems are later passes.
+The first data build covers a compact central Los Angeles pilot area, not the entire metropolitan region. We expand the world district-by-district after the first Roblox test.
+
+## Import into Roblox Studio
+
+1. In Explorer, open `ServerStorage`.
+2. Create a Folder named `CobaltCityData`.
+3. For every `.lua` file inside `roblox/ModuleScripts`, create a ModuleScript inside `CobaltCityData`. Its name must match the file name without `.lua`.
+4. Open each ModuleScript file on the computer, copy all its contents, and paste them into the matching ModuleScript in Studio.
+5. In `ServerScriptService`, create a Script named `CobaltCityWorld`.
+6. Paste the complete contents of `roblox/CobaltCityWorld.server.lua` into it.
+7. Press Play. The Cobalt City pilot map appears around X=50000, Z=50000 as the player approaches it.
+
+## First renderer limits
+
+The pilot renderer creates road segments and building perimeter walls. Roofs, terrain, road junctions, parks, water surfaces, street furniture, interiors and gameplay systems are later passes. This is an initial technical test, not the finished city.
