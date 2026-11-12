@@ -12,7 +12,7 @@ local CFG = {
     DATA_FOLDER = "CobaltCityData",
     ORIGIN = Vector3.new(50000, 0, 50000),
     CHUNK_SIZE = 1024,
-    LOAD_RADIUS = 1, -- 3x3 chunks around each player
+    LOAD_RADIUS = 1,
     UPDATE_SECONDS = 4,
     BATCH_SIZE = 120,
 }
@@ -91,7 +91,7 @@ local function addBuilding(parent, ring, tags, index)
 end
 
 local function parseChunkName(name)
-    local x,z = string.match(name, "^CobaltChunk_(-?%d+)_(-?%d+)$")
+    local x,z = string.match(name, "^CobaltChunk_(-?%d+)_(-?%d+)_Part_(%d+)$")
     if not x then return nil end
     return tonumber(x), tonumber(z)
 end
@@ -106,11 +106,9 @@ end
 
 local function main()
     local data = ServerStorage:FindFirstChild(CFG.DATA_FOLDER)
-    if not data then error("Create ServerStorage/CobaltCityData and add the exported CobaltChunk ModuleScripts.") end
+    if not data then error("Create ServerStorage/CobaltCityData and add all exported CobaltChunk ModuleScripts.") end
 
     local world = getWorld()
-
-    -- A dedicated invisible spawn places the tester at the Cobalt City origin.
     if not world:FindFirstChild("CobaltCitySpawn") then
         local spawn = Instance.new("SpawnLocation")
         spawn.Name = "CobaltCitySpawn"
@@ -128,8 +126,15 @@ local function main()
     for _, module in ipairs(data:GetChildren()) do
         if module:IsA("ModuleScript") then
             local x,z = parseChunkName(module.Name)
-            if x and z then available[x .. ":" .. z] = {module=module,x=x,z=z} end
+            if x then
+                local key = x .. ":" .. z
+                available[key] = available[key] or {x=x,z=z,modules={}}
+                table.insert(available[key].modules,module)
+            end
         end
+    end
+    for _, entry in pairs(available) do
+        table.sort(entry.modules,function(a,b) return a.Name < b.Name end)
     end
 
     local loaded = {}
@@ -137,44 +142,45 @@ local function main()
 
     local function loadChunk(key, entry)
         if loaded[key] then return end
-        local ok, raw = pcall(require, entry.module)
-        if not ok or type(raw) ~= "string" then
-            warn("[CobaltCity] Cannot read " .. entry.module.Name)
-            return
-        end
-        local decoded, payload = pcall(function() return HttpService:JSONDecode(raw) end)
-        if not decoded or type(payload.features) ~= "table" then
-            warn("[CobaltCity] Invalid JSON in " .. entry.module.Name)
-            return
-        end
-
         local chunk = Instance.new("Folder")
-        chunk.Name = entry.module.Name
+        chunk.Name = "CobaltChunk_" .. entry.x .. "_" .. entry.z
         chunk.Parent = world
         loaded[key] = chunk
         local roads = Instance.new("Folder"); roads.Name="Roads"; roads.Parent=chunk
         local buildings = Instance.new("Folder"); buildings.Name="Buildings"; buildings.Parent=chunk
         local roadIndex, buildingIndex, made = 0, 0, 0
 
-        for _, feature in ipairs(payload.features) do
-            local tags = feature.properties or {}
-            local geom = feature.geometry or {}
-            if geom.type == "LineString" and tags.highway then
-                local coords = geom.coordinates
-                for i=1,#coords-1 do
-                    roadIndex += 1
-                    addRoad(roads, vec(coords[i]), vec(coords[i+1]), widthFor(tags), roadIndex)
-                    made += 1
-                    if made % CFG.BATCH_SIZE == 0 then task.wait() end
+        for _, module in ipairs(entry.modules) do
+            local ok, raw = pcall(require,module)
+            if not ok or type(raw) ~= "string" then
+                warn("[CobaltCity] Cannot read " .. module.Name)
+                continue
+            end
+            local decoded, payload = pcall(function() return HttpService:JSONDecode(raw) end)
+            if not decoded or type(payload.features) ~= "table" then
+                warn("[CobaltCity] Invalid JSON in " .. module.Name)
+                continue
+            end
+            for _, feature in ipairs(payload.features) do
+                local tags = feature.properties or {}
+                local geom = feature.geometry or {}
+                if geom.type == "LineString" and tags.highway then
+                    local coords = geom.coordinates
+                    for i=1,#coords-1 do
+                        roadIndex += 1
+                        addRoad(roads, vec(coords[i]), vec(coords[i+1]), widthFor(tags), roadIndex)
+                        made += 1
+                        if made % CFG.BATCH_SIZE == 0 then task.wait() end
+                    end
+                elseif geom.type == "Polygon" and tags.building and geom.coordinates[1] then
+                    buildingIndex += 1
+                    addBuilding(buildings, geom.coordinates[1], tags, buildingIndex)
+                    made += #geom.coordinates[1]
+                    if made % CFG.BATCH_SIZE < #geom.coordinates[1] then task.wait() end
                 end
-            elseif geom.type == "Polygon" and tags.building and geom.coordinates[1] then
-                buildingIndex += 1
-                addBuilding(buildings, geom.coordinates[1], tags, buildingIndex)
-                made += #geom.coordinates[1]
-                if made % CFG.BATCH_SIZE < #geom.coordinates[1] then task.wait() end
             end
         end
-        print("[CobaltCity] Loaded " .. entry.module.Name)
+        print("[CobaltCity] Loaded " .. chunk.Name .. " (" .. #entry.modules .. " parts)")
     end
 
     local function updateChunks()
@@ -205,7 +211,7 @@ local function main()
         busy = false
     end
 
-    print("[CobaltCity] Ready. Data chunks: " .. tostring(#data:GetChildren()))
+    print("[CobaltCity] Ready. Spatial chunks: " .. tostring(#data:GetChildren()) .. " module parts scanned.")
     print("[CobaltCity] World origin: " .. tostring(CFG.ORIGIN) .. ". Moscow map is untouched.")
     while true do
         updateChunks()
