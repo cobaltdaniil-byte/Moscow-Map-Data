@@ -14,7 +14,7 @@ LON0, LAT0 = 37.6173, 55.7558
 COS = math.cos(math.radians(LAT0))
 SCALE = 0.35
 RADIUS_M = 4200
-MAX_BUILDINGS = 650
+MAX_BUILDINGS = 420
 
 def xy(lon, lat):
     return ((lon-LON0)*111320*COS, -(lat-LAT0)*111320)
@@ -87,7 +87,7 @@ for f in data.get("features", []):
 buildings.sort(key=lambda x:x[0])
 buildings = [x[1:] for x in buildings[:MAX_BUILDINGS]]
 # Cap road segments to keep initial Studio test responsive.
-roads = roads[:12000]
+roads = roads[:5500]
 parks = parks[:220]
 waters = waters[:120]
 
