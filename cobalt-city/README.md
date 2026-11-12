@@ -60,3 +60,12 @@ Use Los Angeles-area open geodata as the geographic inspiration/reference, combi
 6. District chunking and Roblox streaming/performance.
 7. Interactive business/service locations and reusable interiors.
 8. Visual pass, optimization, and in-Studio test checklist.
+
+
+## Roblox isolation and first renderer
+
+- Roblox generator: `roblox/CobaltCityWorld.server.lua`.
+- Safe import steps: `roblox/IMPORT_SAFE.md`.
+- Chunk exporter: `tools/export_roblox_modules.py`.
+
+The generator creates only `Workspace.CobaltCityWorld`, at world origin X=50000, Z=50000. It never deletes or modifies Moscow map folders. On rerun, it clears only the contents of its own Cobalt City folder. The first renderer draws roads and building perimeter walls; roofs and detailed presentation are deliberately deferred until geometry is validated.
