@@ -1,5 +1,5 @@
 --========================================================
--- COBALT CITY RP — MOSCOW TEST MAP 0.2
+-- COBALT CITY RP — MOSCOW TEST MAP 0.3
 -- IMPORTANT: This creates MoscowCityMap_Test only.
 -- Your existing CobaltCityMap is NOT deleted or modified.
 --
@@ -268,56 +268,68 @@ for i, item in ipairs(DATA.Buildings or {}) do
 end
 
 ----------------------------------------------------------
--- Safe test spawn outside the imported OSM geometry.
--- The player is moved here after map generation.
+-- Isolated safe spawn, far away from both maps.
+-- This prevents the player from appearing inside OSM objects
+-- or the old CobaltCityMap.
 ----------------------------------------------------------
-local spawnX = radius + 80
+local spawnX = radius + 3000
 
 local spawnPlatform = makePart(
 	map,
 	"Moscow Spawn Platform",
-	Vector3.new(48, 1, 48),
-	CFrame.new(spawnX, 0.5, 0),
+	Vector3.new(120, 2, 120),
+	CFrame.new(spawnX, 0, 0),
 	Enum.Material.Concrete,
 	Color3.fromRGB(105, 110, 116),
 	true
 )
 
+-- Low safety walls keep the player on the test platform.
+local wallColor = Color3.fromRGB(75, 80, 88)
+makePart(map, "Spawn Wall North", Vector3.new(120, 8, 2), CFrame.new(spawnX, 4, -59), Enum.Material.Concrete, wallColor, true)
+makePart(map, "Spawn Wall South", Vector3.new(120, 8, 2), CFrame.new(spawnX, 4, 59), Enum.Material.Concrete, wallColor, true)
+makePart(map, "Spawn Wall East", Vector3.new(2, 8, 120), CFrame.new(spawnX + 59, 4, 0), Enum.Material.Concrete, wallColor, true)
+makePart(map, "Spawn Wall West", Vector3.new(2, 8, 120), CFrame.new(spawnX - 59, 4, 0), Enum.Material.Concrete, wallColor, true)
+
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "Moscow Test Spawn"
-spawn.Size = Vector3.new(12, 1, 12)
+spawn.Size = Vector3.new(16, 1, 16)
 spawn.Position = Vector3.new(spawnX, 1.5, 0)
 spawn.Anchored = true
 spawn.Neutral = true
 spawn.AllowTeamChangeOnTouch = false
-spawn.Material = Enum.Material.Concrete
-spawn.Color = Color3.fromRGB(65, 115, 155)
+spawn.Material = Enum.Material.Neon
+spawn.Color = Color3.fromRGB(65, 155, 210)
 spawn.Parent = map
 
-local function movePlayerToMoscow(player)
+local function bindPlayer(player)
 	player.RespawnLocation = spawn
-	local character = player.Character
-	if character then
-		task.defer(function()
+
+	player.CharacterAdded:Connect(function(character)
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		if root then
+			task.wait(0.5)
 			if character.Parent then
-				character:PivotTo(spawn.CFrame + Vector3.new(0, 4, 0))
+				character:PivotTo(CFrame.new(spawnX, 6, 0))
+			end
+		end
+	end)
+
+	if player.Character then
+		task.spawn(function()
+			local root = player.Character:WaitForChild("HumanoidRootPart", 10)
+			if root and player.Character.Parent then
+				task.wait(0.5)
+				player.Character:PivotTo(CFrame.new(spawnX, 6, 0))
 			end
 		end)
 	end
 end
 
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function()
-		task.wait(0.35)
-		movePlayerToMoscow(player)
-	end)
-	if player.Character then
-		movePlayerToMoscow(player)
-	end
-end)
+Players.PlayerAdded:Connect(bindPlayer)
 
 for _, player in ipairs(Players:GetPlayers()) do
-	movePlayerToMoscow(player)
+	bindPlayer(player)
 end
 
 print("========================================")
