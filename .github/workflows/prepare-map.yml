@@ -6,6 +6,7 @@ on:
     paths:
       - "export*.geojson"
       - "filter_moscow_geojson.py"
+      - "build_roblox_map.py"
       - ".github/workflows/prepare-map.yml"
 
 permissions:
@@ -29,10 +30,15 @@ jobs:
       - name: Filter and merge GeoJSON
         run: python filter_moscow_geojson.py
 
+      - name: Build Roblox map module
+        run: python build_roblox_map.py
+
       - name: Upload ready map files
         uses: actions/upload-artifact@v4
         with:
           name: central-moscow-filtered
-          path: filtered/
+          path: |
+            filtered/
+            roblox_output/
           if-no-files-found: error
           retention-days: 14
