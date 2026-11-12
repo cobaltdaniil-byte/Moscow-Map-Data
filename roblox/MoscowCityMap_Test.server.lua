@@ -93,11 +93,15 @@ local natureFolder = Instance.new("Folder")
 natureFolder.Name = "Parks and Water"
 natureFolder.Parent = map
 
+-- Keep the imported Moscow test map far away from the old synthetic map.
+-- All OSM coordinates remain unchanged relative to each other.
+local MAP_OFFSET = Vector3.new(12000, 0, 12000)
+
 local function makePart(parent, name, size, cf, material, color, collide)
 	local p = Instance.new("Part")
 	p.Name = name
 	p.Size = size
-	p.CFrame = cf
+	p.CFrame = cf + MAP_OFFSET
 	p.Anchored = true
 	p.Material = material
 	p.Color = color
@@ -350,7 +354,7 @@ end
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "Moscow Test Spawn"
 spawn.Size = Vector3.new(12, 0.5, 12)
-spawn.Position = Vector3.new(spawnX, 0.62, spawnZ)
+spawn.Position = Vector3.new(spawnX, 0.62, spawnZ) + MAP_OFFSET
 spawn.Anchored = true
 spawn.Neutral = true
 spawn.AllowTeamChangeOnTouch = false
@@ -367,7 +371,7 @@ local function bindPlayer(player)
 		if root then
 			task.wait(0.5)
 			if character.Parent then
-				character:PivotTo(CFrame.new(spawnX, 5, spawnZ))
+				character:PivotTo(CFrame.new(spawnX, 5, spawnZ) + MAP_OFFSET)
 			end
 		end
 	end)
@@ -397,5 +401,6 @@ print("Buildings skipped due to overlap: " .. tostring(skippedOverlapping))
 print("Buildings created: " .. tostring(#acceptedFootprints))
 print("Parks: " .. tostring(#(DATA.Parks or {})))
 print("Water areas: " .. tostring(#(DATA.Water or {})))
-print("Old CobaltCityMap was preserved.")
+print("Moscow map offset: " .. tostring(MAP_OFFSET))
+print("Old CobaltCityMap was preserved and is spatially separated.")
 print("========================================")
