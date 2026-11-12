@@ -110,6 +110,17 @@ local function makePart(parent, name, size, cf, material, color, collide)
 end
 
 local radius = tonumber(DATA.Radius) or 1400
+
+-- A small clear zone at the center of the imported Moscow map.
+-- Features inside this radius are omitted to make a safe city plaza.
+local spawnX, spawnZ = 0, 0
+local spawnClearRadius = 72
+
+local function isInsideSpawnZone(x, z, extra)
+	local dx = x - spawnX
+	local dz = z - spawnZ
+	return (dx * dx + dz * dz) < (spawnClearRadius + (extra or 0)) ^ 2
+end
 makePart(
 	map,
 	"Moscow Ground",
@@ -125,7 +136,7 @@ makePart(
 ----------------------------------------------------------
 for i, item in ipairs(DATA.Water or {}) do
 	local x, z, w, d = item[1], item[2], item[3], item[4]
-	if w and d then
+	if w and d and not isInsideSpawnZone(x, z, math.max(w, d) * 0.5) then
 		makePart(
 			natureFolder, "Moscow Water " .. i,
 			Vector3.new(w, 0.12, d),
@@ -143,7 +154,7 @@ end
 ----------------------------------------------------------
 for i, item in ipairs(DATA.Parks or {}) do
 	local x, z, w, d = item[1], item[2], item[3], item[4]
-	if w and d then
+	if w and d and not isInsideSpawnZone(x, z, math.max(w, d) * 0.5) then
 		makePart(
 			natureFolder, "Green Area " .. i,
 			Vector3.new(w, 0.12, d),
@@ -161,7 +172,7 @@ end
 ----------------------------------------------------------
 for i, item in ipairs(DATA.Roads or {}) do
 	local x, z, width, length, angle = item[1], item[2], item[3], item[4], item[5]
-	if width and length and length > 1 then
+	if width and length and length > 1 and not isInsideSpawnZone(x, z, length * 0.5) then
 		makePart(
 			roadsFolder, "Road Segment " .. i,
 			Vector3.new(math.max(2, width), 0.22, math.max(2, length)),
@@ -195,7 +206,7 @@ local rng = Random.new(240519)
 
 for i, item in ipairs(DATA.Buildings or {}) do
 	local x, z, width, depth, height = item[1], item[2], item[3], item[4], item[5]
-	if width and depth and height then
+	if width and depth and height and not isInsideSpawnZone(x, z, math.max(width, depth) * 0.5) then
 		width = math.max(5, math.min(width, 75))
 		depth = math.max(5, math.min(depth, 75))
 		height = math.max(8, math.min(height, 90))
@@ -268,38 +279,58 @@ for i, item in ipairs(DATA.Buildings or {}) do
 end
 
 ----------------------------------------------------------
--- Isolated safe spawn, far away from both maps.
--- This prevents the player from appearing inside OSM objects
--- or the old CobaltCityMap.
+-- Moscow city plaza and player spawn
 ----------------------------------------------------------
-local spawnX = radius + 3000
-
-local spawnPlatform = makePart(
+local plaza = makePart(
 	map,
-	"Moscow Spawn Platform",
-	Vector3.new(120, 2, 120),
-	CFrame.new(spawnX, 0, 0),
-	Enum.Material.Concrete,
-	Color3.fromRGB(105, 110, 116),
+	"Moscow Central Test Plaza",
+	Vector3.new(150, 0.35, 150),
+	CFrame.new(spawnX, 0.18, spawnZ),
+	Enum.Material.Pavement,
+	Color3.fromRGB(125, 127, 128),
 	true
 )
 
--- Low safety walls keep the player on the test platform.
-local wallColor = Color3.fromRGB(75, 80, 88)
-makePart(map, "Spawn Wall North", Vector3.new(120, 8, 2), CFrame.new(spawnX, 4, -59), Enum.Material.Concrete, wallColor, true)
-makePart(map, "Spawn Wall South", Vector3.new(120, 8, 2), CFrame.new(spawnX, 4, 59), Enum.Material.Concrete, wallColor, true)
-makePart(map, "Spawn Wall East", Vector3.new(2, 8, 120), CFrame.new(spawnX + 59, 4, 0), Enum.Material.Concrete, wallColor, true)
-makePart(map, "Spawn Wall West", Vector3.new(2, 8, 120), CFrame.new(spawnX - 59, 4, 0), Enum.Material.Concrete, wallColor, true)
+-- Decorative paving strips around the plaza.
+for i = -2, 2 do
+	makePart(map, "Plaza Paving X " .. i, Vector3.new(150, 0.08, 1.2),
+		CFrame.new(spawnX, 0.4, spawnZ + i * 24), Enum.Material.Slate,
+		Color3.fromRGB(92, 96, 100), false)
+	makePart(map, "Plaza Paving Z " .. i, Vector3.new(1.2, 0.08, 150),
+		CFrame.new(spawnX + i * 24, 0.4, spawnZ), Enum.Material.Slate,
+		Color3.fromRGB(92, 96, 100), false)
+end
+
+-- Four street lamps around the square.
+for i, offset in ipairs({
+	Vector3.new(-58, 0, -58),
+	Vector3.new(58, 0, -58),
+	Vector3.new(-58, 0, 58),
+	Vector3.new(58, 0, 58),
+}) do
+	local pole = makePart(map, "Plaza Street Lamp " .. i, Vector3.new(0.8, 13, 0.8),
+		CFrame.new(spawnX + offset.X, 6.9, spawnZ + offset.Z),
+		Enum.Material.Metal, Color3.fromRGB(45, 48, 52), true)
+	local lamp = makePart(map, "Plaza Lamp Head " .. i, Vector3.new(3, 0.6, 1.4),
+		CFrame.new(spawnX + offset.X, 13.5, spawnZ + offset.Z),
+		Enum.Material.Metal, Color3.fromRGB(225, 205, 150), false)
+	local light = Instance.new("PointLight")
+	light.Brightness = 1.5
+	light.Range = 22
+	light.Color = Color3.fromRGB(255, 224, 170)
+	light.Parent = lamp
+end
 
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "Moscow Test Spawn"
-spawn.Size = Vector3.new(16, 1, 16)
-spawn.Position = Vector3.new(spawnX, 1.5, 0)
+spawn.Size = Vector3.new(12, 0.5, 12)
+spawn.Position = Vector3.new(spawnX, 0.62, spawnZ)
 spawn.Anchored = true
 spawn.Neutral = true
 spawn.AllowTeamChangeOnTouch = false
-spawn.Material = Enum.Material.Neon
-spawn.Color = Color3.fromRGB(65, 155, 210)
+spawn.Material = Enum.Material.SmoothPlastic
+spawn.Transparency = 1
+spawn.CanCollide = false
 spawn.Parent = map
 
 local function bindPlayer(player)
@@ -310,7 +341,7 @@ local function bindPlayer(player)
 		if root then
 			task.wait(0.5)
 			if character.Parent then
-				character:PivotTo(CFrame.new(spawnX, 6, 0))
+				character:PivotTo(CFrame.new(spawnX, 5, spawnZ))
 			end
 		end
 	end)
@@ -333,7 +364,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 print("========================================")
-print("COBALT CITY RP — MOSCOW TEST MAP 0.2")
+print("COBALT CITY RP — MOSCOW TEST MAP 0.4")
 print("Road segments: " .. tostring(#(DATA.Roads or {})))
 print("Buildings: " .. tostring(#(DATA.Buildings or {})))
 print("Parks: " .. tostring(#(DATA.Parks or {})))
