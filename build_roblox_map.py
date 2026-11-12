@@ -13,6 +13,7 @@ OUT.mkdir(exist_ok=True)
 LON0, LAT0 = 37.6173, 55.7558
 COS = math.cos(math.radians(LAT0))
 SCALE = 0.35
+ROAD_WIDTH_MULTIPLIER = 2.7  # Wider Roblox lanes; keep map coordinates unchanged.
 RADIUS_M = 4200
 MAX_BUILDINGS = 420
 
@@ -57,7 +58,7 @@ for f in data.get("features", []):
                     length = math.hypot(dx,dz)
                     if length < 5:
                         continue
-                    roads.append((mid[0]*SCALE,mid[1]*SCALE,width_m*SCALE,length*SCALE,math.degrees(math.atan2(dx,dz))))
+                    roads.append((mid[0]*SCALE,mid[1]*SCALE,width_m*SCALE*ROAD_WIDTH_MULTIPLIER,length*SCALE,math.degrees(math.atan2(dx,dz))))
         elif g.geom_type in ("Polygon", "MultiPolygon") and (p.get("building") or p.get("leisure") in {"park","garden"} or p.get("landuse") in {"grass","forest","recreation_ground"} or p.get("natural") in {"water","wood"} or p.get("water")):
             geoms = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
             for poly in geoms:
