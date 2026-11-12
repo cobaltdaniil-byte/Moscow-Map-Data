@@ -76,7 +76,7 @@ for f in data.get("features", []):
                     h = p.get("height")
                     try: height = float(str(h).replace("m","").strip())
                     except: height = 12 + (int(p.get("building:levels", 3) or 3))*3
-                    buildings.append((math.hypot(cx,cz), row[0],row[1],row[2],row[3],max(8,min(90,height*0.7)))
+                    buildings.append((math.hypot(cx,cz), row[0],row[1],row[2],row[3],max(8,min(90,height*0.7))))
                 elif p.get("natural") == "water" or p.get("water"):
                     waters.append(row)
                 else:
