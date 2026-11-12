@@ -4,14 +4,16 @@
     <Properties>
       <string name="Name">CobaltCityWorld</string>
       <bool name="Disabled">false</bool>
-      <ProtectedString name="Source"><![CDATA[-- COBALT CITY RP — STREAMED, SAFE WORLD LOADER
--- Put this Script in ServerScriptService as CobaltCityWorld.
--- It creates/clears ONLY Workspace.CobaltCityWorld. Moscow objects are untouched.
+      <ProtectedString name="Source"><![CDATA[-- COBALT CITY RP — CLEAN START + STREAMED WORLD
+-- Place this Script in ServerScriptService as CobaltCityWorld.
+-- Disables the two old map generators, moves the two old map models out of Workspace,
+-- then loads the new Cobalt City around the player's spawn. Does not clear Workspace.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ServerStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local CFG = {
     WORLD_NAME = "CobaltCityWorld",
@@ -23,10 +25,41 @@ local CFG = {
     BATCH_SIZE = 120,
 }
 
+print("[CobaltCity] BOOT: starting clean Cobalt City launch")
+
+local function disableLegacy()
+    for _, scriptName in ipairs({"CobaltCityServer", "MoscowCityGenerator"}) do
+        local oldScript = ServerScriptService:FindFirstChild(scriptName, true)
+        if oldScript and (oldScript:IsA("Script") or oldScript:IsA("LocalScript")) then
+            oldScript.Enabled = false
+            print("[CobaltCity] Disabled old generator: " .. scriptName)
+        else
+            print("[CobaltCity] Old generator not found: " .. scriptName)
+        end
+    end
+
+    local archive = ServerStorage:FindFirstChild("DisabledLegacyMaps")
+    if not archive then
+        archive = Instance.new("Folder")
+        archive.Name = "DisabledLegacyMaps"
+        archive.Parent = ServerStorage
+    end
+
+    for _, mapName in ipairs({"CobaltCityMap", "MoscowCityMap_Test"}) do
+        local oldMap = Workspace:FindFirstChild(mapName)
+        if oldMap then
+            oldMap.Parent = archive
+            print("[CobaltCity] Moved old map out of Workspace: " .. mapName)
+        else
+            print("[CobaltCity] Old map not found in Workspace: " .. mapName)
+        end
+    end
+end
+
 local function getWorld()
     local world = Workspace:FindFirstChild(CFG.WORLD_NAME)
     if world and not world:IsA("Folder") then
-        error("Workspace.CobaltCityWorld exists but is not a Folder. Rename that object manually; nothing was deleted.")
+        error("Workspace.CobaltCityWorld exists but is not a Folder.")
     end
     if not world then
         world = Instance.new("Folder")
@@ -102,23 +135,20 @@ local function parseChunkName(name)
     return tonumber(x), tonumber(z)
 end
 
-local function getCharacterChunk(player)
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    local localPos = root.Position - CFG.ORIGIN
-    return math.floor(localPos.X/CFG.CHUNK_SIZE), math.floor(localPos.Z/CFG.CHUNK_SIZE)
-end
-
 local function main()
+    disableLegacy()
+
     local data = ServerStorage:FindFirstChild(CFG.DATA_FOLDER)
-    if not data then error("Create ServerStorage/CobaltCityData and add all exported CobaltChunk ModuleScripts.") end
+    if not data then
+        error("ServerStorage/CobaltCityData not found. The 409 map modules must be inside ServerStorage.")
+    end
 
     local world = getWorld()
-    if not world:FindFirstChild("CobaltCitySpawn") then
-        local spawn = Instance.new("SpawnLocation")
+    local spawn = world:FindFirstChild("CobaltCitySpawn")
+    if not spawn then
+        spawn = Instance.new("SpawnLocation")
         spawn.Name = "CobaltCitySpawn"
-        spawn.Size = Vector3.new(12, 1, 12)
+        spawn.Size = Vector3.new(16, 1, 16)
         spawn.Position = CFG.ORIGIN + Vector3.new(0, 1, 0)
         spawn.Anchored = true
         spawn.Transparency = 1
@@ -128,9 +158,38 @@ local function main()
         spawn.Parent = world
     end
 
+    local function sendPlayerToCity(player, character)
+        player.RespawnLocation = spawn
+        local root = character:WaitForChild("HumanoidRootPart", 15)
+        if root then
+            character:PivotTo(CFrame.new(CFG.ORIGIN + Vector3.new(0, 6, 0)))
+            print("[CobaltCity] Player sent to Cobalt City: " .. player.Name)
+        else
+            warn("[CobaltCity] Character root not found for " .. player.Name)
+        end
+    end
+
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            task.wait(0.5)
+            sendPlayerToCity(player, character)
+        end)
+        if player.Character then
+            task.spawn(sendPlayerToCity, player, player.Character)
+        end
+    end)
+    for _, player in ipairs(Players:GetPlayers()) do
+        player.RespawnLocation = spawn
+        if player.Character then
+            task.spawn(sendPlayerToCity, player, player.Character)
+        end
+    end
+
     local available = {}
+    local moduleCount = 0
     for _, module in ipairs(data:GetChildren()) do
         if module:IsA("ModuleScript") then
+            moduleCount += 1
             local x,z = parseChunkName(module.Name)
             if x then
                 local key = x .. ":" .. z
@@ -142,6 +201,9 @@ local function main()
     for _, entry in pairs(available) do
         table.sort(entry.modules,function(a,b) return a.Name < b.Name end)
     end
+
+    print("[CobaltCity] READY: " .. moduleCount .. " modules, " .. tostring((function() local n=0 for _ in pairs(available) do n+=1 end return n end)()) .. " spatial chunks.")
+    print("[CobaltCity] Spawn: " .. tostring(CFG.ORIGIN))
 
     local loaded = {}
     local busy = false
@@ -159,11 +221,11 @@ local function main()
         for _, module in ipairs(entry.modules) do
             local ok, raw = pcall(require,module)
             if not ok or type(raw) ~= "string" then
-                warn("[CobaltCity] Cannot read " .. module.Name)
+                warn("[CobaltCity] Cannot read " .. module.Name .. ": " .. tostring(raw))
                 continue
             end
             local decoded, payload = pcall(function() return HttpService:JSONDecode(raw) end)
-            if not decoded or type(payload.features) ~= "table" then
+            if not decoded or type(payload) ~= "table" or type(payload.features) ~= "table" then
                 warn("[CobaltCity] Invalid JSON in " .. module.Name)
                 continue
             end
@@ -178,7 +240,7 @@ local function main()
                         made += 1
                         if made % CFG.BATCH_SIZE == 0 then task.wait() end
                     end
-                elseif geom.type == "Polygon" and tags.building and geom.coordinates[1] then
+                elseif geom.type == "Polygon" and tags.building and geom.coordinates and geom.coordinates[1] then
                     buildingIndex += 1
                     addBuilding(buildings, geom.coordinates[1], tags, buildingIndex)
                     made += #geom.coordinates[1]
@@ -186,7 +248,15 @@ local function main()
                 end
             end
         end
-        print("[CobaltCity] Loaded " .. chunk.Name .. " (" .. #entry.modules .. " parts)")
+        print("[CobaltCity] LOADED " .. chunk.Name .. " (" .. #entry.modules .. " modules)")
+    end
+
+    local function getCharacterChunk(player)
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then return nil end
+        local localPos = root.Position - CFG.ORIGIN
+        return math.floor(localPos.X/CFG.CHUNK_SIZE), math.floor(localPos.Z/CFG.CHUNK_SIZE)
     end
 
     local function updateChunks()
@@ -211,21 +281,22 @@ local function main()
             if not wanted[key] then
                 folder:Destroy()
                 loaded[key]=nil
-                print("[CobaltCity] Unloaded " .. key)
+                print("[CobaltCity] UNLOADED " .. key)
             end
         end
         busy = false
     end
 
-    print("[CobaltCity] Ready. Spatial chunks: " .. tostring(#data:GetChildren()) .. " module parts scanned.")
-    print("[CobaltCity] World origin: " .. tostring(CFG.ORIGIN) .. ". Moscow map is untouched.")
     while true do
         updateChunks()
         task.wait(CFG.UPDATE_SECONDS)
     end
 end
 
-main()
+local ok, err = xpcall(main, debug.traceback)
+if not ok then
+    warn("[CobaltCity] FATAL STARTUP ERROR:\\n" .. tostring(err))
+end
 ]]></ProtectedString>
     </Properties>
   </Item>
